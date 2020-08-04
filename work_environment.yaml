@@ -1,0 +1,162 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: work-environment-deployment
+spec:
+  replicas: 1
+  #Pod副本期待数量量为1
+  selector:
+    matchLabels:
+        app: work-environment-deployment
+  template:
+    metadata:
+      labels:
+        app: work-environment-deployment
+    spec:
+        containers:
+          - name: nginx
+            image: nginx:stable
+            imagePullPolicy: Always #[Always | Never | IfNotPresent] #获取镜像的策略 Alawys表示下载镜像 IfnotPresent表示优先使用本地镜像，否则下载镜像，Nerver表示仅使用本地镜像
+            ports:
+              - name: 80-port
+                containerPort: 80
+              - name: 443-port
+                containerPort: 443
+            volumeMounts: #容器内挂载点
+              - mountPath: /var/www/html/:rw
+                name: html #必须有名称
+              - mountPath: /etc/nginx/nginx.conf:rw
+                name: nginx-conf
+              - mountPath: /etc/nginx/conf.d/yishou.local.com.conf:rw
+                name: nginx-yishou-conf
+              - mountPath: /etc/nginx/conf.d/yishouerp.local.com.conf:rw
+                name: nginx-yishouerp-conf
+              - mountPath: /var/log/nginx/:rw
+                name: nginx-log
+          - name: fpm
+            image: registry.cn-hangzhou.aliyuncs.com/fumi_fm/work_environment_php70:v1
+            imagePullPolicy: Always
+            ports:
+              - name: 9000-port
+                containerPort: 9000
+            volumeMounts:
+              - mountPath: /var/www/html/:rw
+                name: html
+              - mountPath: /usr/local/etc/php/php.ini:ro
+                name: php-ini
+              - mountPath: /usr/local/etc/php-fpm.d/www.conf:rw
+                name: php-fpm-conf
+              - mountPath: /var/log/php-fpm/:rw
+                name: php-log
+        nodeSelector:  #指定部署节点
+          disktype: master
+        volumes:
+          - name: html #跟上面的名称对应
+            hostPath: #类型为hostPath的存储卷，表示挂载Pod所在宿主机的目录
+              path: /mnt/hgfs/work_code/work_environment/www/ #宿主机挂载点
+          - name: nginx-conf    
+            hostPath:
+              path: /mnt/hgfs/work_code/work_environment/conf/nginx/nginx.conf
+          - name: nginx-yishou-conf    
+            hostPath:
+              path: /mnt/hgfs/work_code/work_environment/conf/nginx/conf.d/yishou.local.com.conf
+          - name: nginx-yishouerp-conf    
+            hostPath:
+              path: /mnt/hgfs/work_code/work_environment/conf/nginx/conf.d/yishouerp.local.com.conf    
+          - name: nginx-log
+            hostPath:
+              path: /mnt/hgfs/work_code/work_environment/log/nginx/
+          - name: php-ini
+            hostPath:
+              path: /mnt/hgfs/work_code/work_environment/conf/php/php.ini
+          - name: php-fpm-conf
+            hostPath:
+              path: /mnt/hgfs/work_code/work_environment/conf/php/php-fpm.d/www.conf
+          - name: php-log
+            hostPath:
+              path: /mnt/hgfs/work_code/work_environment/log/php-fpm/    
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: work-environment-php56-deployment
+spec:
+  replicas: 1
+  #Pod副本期待数量量为1
+  selector:
+    matchLabels:
+        app: work-environment-php56-deployment
+  template:
+    metadata:
+      labels:
+        app: work-environment-php56-deployment
+    spec:
+        containers:
+          - name: phpfpm
+            image: registry.cn-hangzhou.aliyuncs.com/fumi_fm/work_environment_php56:v1
+            imagePullPolicy: Always
+            ports:
+              - name: 9001-port
+                containerPort: 9001
+            volumeMounts:
+              - mountPath: /var/www/html/:rw
+                name: html
+              - mountPath: /usr/local/etc/php/php.ini:ro
+                name: php-9001-ini
+              - mountPath: /usr/local/etc/php-fpm.d/www.conf:rw
+                name: php-9001-fpm-conf
+              - mountPath: /var/log/php-fpm/:rw
+                name: php-log
+        nodeSelector:  #指定部署节点
+          disktype: master
+        volumes:
+          - name: html #跟上面的名称对应
+            hostPath: #类型为hostPath的存储卷，表示挂载Pod所在宿主机的目录
+              path: /mnt/hgfs/work_code/work_environment/www/ #宿主机挂载点
+          - name: php-ini
+            hostPath:
+              path: /mnt/hgfs/work_code/work_environment/conf/php/php.ini
+          - name: php-fpm-conf
+            hostPath:
+              path: /mnt/hgfs/work_code/work_environment/conf/php/php-fpm.d/www.conf
+          - name: php-9001-ini
+            hostPath:
+              path: /mnt/hgfs/work_code/work_environment/conf/php/php-9001.ini
+          - name: php-9001-fpm-conf
+            hostPath:
+              path: /mnt/hgfs/work_code/work_environment/conf/php/php-fpm.d/www-9001.conf
+          - name: php-log
+            hostPath:
+              path: /mnt/hgfs/work_code/work_environment/log/php-fpm/    
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: work-environment-service
+spec:
+  type: NodePort
+  ports:
+    - name: 80-port
+      port: 80 #暴露给k8s集群内部服务访问
+      targetPort: 80 #后方 pod 的服务端口
+      nodePort: 80 #暴露给k8s集群外部服务访问
+    - name: 9000-port
+      port: 9000 
+      targetPort: 9000 #后方 pod 的服务端口
+      nodePort: 9000
+  selector:
+    app: work-environment-deployment
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: work-environment-php56-service
+spec:
+  type: NodePort
+  ports:
+    - name: 9001-port
+      port: 9001 #暴露给k8s集群内部服务访问
+      targetPort: 9001 #后方 pod 的服务端口
+      nodePort: 9001 #暴露给k8s集群外部服务访问
+  selector:
+    app: work-environment-php56-deployment
